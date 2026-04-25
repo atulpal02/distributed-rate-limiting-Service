@@ -1,36 +1,35 @@
+const getTierFromApiKey = require("../utils/getTier");
 const { redisClient } = require("../redis/client");
 const RATE_LIMITS = require("../config/limits");
-const getTierFromApiKey = require("../utils/getTier");
 
 const LUA_SCRIPT = `
-local key = KEYS[1]
+local tokens_key = KEYS[1]
 local capacity = tonumber(ARGV[1])
-local refillRate = tonumber(ARGV[2])
+local refill_rate = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
 
-local data = redis.call("HMGET", key, "tokens", "lastRefill")
-local tokens = tonumber(data[1])
-local lastRefill = tonumber(data[2])
+local data = redis.call("HMGET", tokens_key, "tokens", "last_refill")
+local tokens = tonumber(data[1]) or capacity
+local last_refill = tonumber(data[2]) or now
 
-if tokens == nil then
-  tokens = capacity
-  lastRefill = now
-end
+-- Refill tokens
+local elapsed = now - last_refill
+local refill_amount = math.floor(elapsed * refill_rate)
+tokens = math.min(tokens + refill_amount, capacity)
 
-local delta = math.max(0, now - lastRefill)
-local refill = delta * refillRate
-tokens = math.min(capacity, tokens + refill)
-
-if tokens < 1 then
-  redis.call("HMSET", key, "tokens", tokens, "lastRefill", now)
+if tokens > 0 then
+  -- Consume a token
+  tokens = tokens - 1
+  redis.call("HMSET", tokens_key, "tokens", tokens, "last_refill", now)
+  return 1
+else
+  -- No tokens left
+  redis.call("HMSET", tokens_key                        
+    , "tokens", tokens, "last_refill", now)
   return 0
 end
+`;  
 
-tokens = tokens - 1
-redis.call("HMSET", key, "tokens", tokens, "lastRefill", now)
-redis.call("EXPIRE", key, math.ceil(capacity / refillRate))
-return 1
-`;
 
 async function rateLimiter(req, res, next) {
   const apiKey = req.header("x-api-key");
@@ -43,14 +42,20 @@ async function rateLimiter(req, res, next) {
     return res.status(403).json({ error: "Invalid API key" });
   }
 
-  const limit = RATE_LIMITS[tier];
-  const redisKey = `rate_limit:${apiKey}`;
+  const ip = req.ip;
+
+  const keys = {
+    api: `rate_limit:api:${apiKey}`,
+    ip: `rate_limit:ip:${ip}`,
+    global: `rate_limit:global`
+  };
+
   const now = Math.floor(Date.now() / 1000);
 
-  try {
-    const allowed = Number(
+  async function checkLimit(key, limit) {
+    return Number(
       await redisClient.eval(LUA_SCRIPT, {
-        keys: [redisKey],
+        keys: [key],
         arguments: [
           limit.capacity.toString(),
           limit.refillRate.toString(),
@@ -58,9 +63,28 @@ async function rateLimiter(req, res, next) {
         ]
       })
     );
+  }
 
-    if (allowed === 0) {
-      return res.status(429).json({ error: "Rate limit exceeded", tier });
+  try {
+    // 1. Global limit
+    const globalAllowed = await checkLimit(keys.global, RATE_LIMITS.global);
+    if (!globalAllowed) {
+      return res.status(429).json({ error: "Global rate limit exceeded" });
+    }
+
+    // 2. IP limit
+    const ipAllowed = await checkLimit(keys.ip, RATE_LIMITS.ip);
+    if (!ipAllowed) {
+      return res.status(429).json({ error: "IP rate limit exceeded" });
+    }
+
+    // 3. API key limit
+    const apiAllowed = await checkLimit(keys.api, RATE_LIMITS[tier]);
+    if (!apiAllowed) {
+      return res.status(429).json({
+        error: "API rate limit exceeded",
+        tier
+      });
     }
 
     next();
