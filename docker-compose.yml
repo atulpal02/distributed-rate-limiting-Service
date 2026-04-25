@@ -11,27 +11,48 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - PORT=3000
-      - REDIS_URL=redis://redis:6379
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - .:/app
     depends_on:
-      - redis
+      redis:
+        condition: service_started
 
   app2:
     build: .
     ports:
       - "3001:3000"
     environment:
-      - PORT=3000
-      - REDIS_URL=redis://redis:6379
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - .:/app
     depends_on:
-      - redis
+      redis:
+        condition: service_started
 
   app3:
     build: .
     ports:
       - "3002:3000"
     environment:
-      - PORT=3000
-      - REDIS_URL=redis://redis:6379
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - .:/app
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3003:3000"

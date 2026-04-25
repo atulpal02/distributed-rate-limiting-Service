@@ -1,3 +1,9 @@
+const {
+  totalRequests,
+  rateLimitedRequests,
+  tierRequests,
+  requestLatency
+} = require("../metrics/metrics");
 const getTierFromApiKey = require("../utils/getTier");
 const { redisClient } = require("../redis/client");
 const RATE_LIMITS = require("../config/limits");
@@ -30,17 +36,24 @@ else
 end
 `;  
 
-
 async function rateLimiter(req, res, next) {
+  const end = requestLatency.startTimer(); // start timer
+
+  totalRequests.inc(); // count every request
+
   const apiKey = req.header("x-api-key");
   if (!apiKey) {
+    end();
     return res.status(401).json({ error: "API key required" });
   }
 
   const tier = getTierFromApiKey(apiKey);
   if (!tier) {
+    end();
     return res.status(403).json({ error: "Invalid API key" });
   }
+
+  tierRequests.inc({ tier }); // track per-tier usage
 
   const ip = req.ip;
 
@@ -66,30 +79,38 @@ async function rateLimiter(req, res, next) {
   }
 
   try {
-    // 1. Global limit
+    // Global
     const globalAllowed = await checkLimit(keys.global, RATE_LIMITS.global);
     if (!globalAllowed) {
+      rateLimitedRequests.inc({ type: "global" });
+      end();
       return res.status(429).json({ error: "Global rate limit exceeded" });
     }
 
-    // 2. IP limit
+    // IP
     const ipAllowed = await checkLimit(keys.ip, RATE_LIMITS.ip);
     if (!ipAllowed) {
+      rateLimitedRequests.inc({ type: "ip" });
+      end();
       return res.status(429).json({ error: "IP rate limit exceeded" });
     }
 
-    // 3. API key limit
+    // API
     const apiAllowed = await checkLimit(keys.api, RATE_LIMITS[tier]);
     if (!apiAllowed) {
+      rateLimitedRequests.inc({ type: "api" });
+      end();
       return res.status(429).json({
         error: "API rate limit exceeded",
         tier
       });
     }
 
+    end(); // stop latency timer
     next();
   } catch (err) {
     console.error("Rate limiter error:", err);
+    end();
     return res.status(500).json({ error: "Rate limiter failure" });
   }
 }
