@@ -3,6 +3,9 @@
 A production-grade distributed rate limiting system built using Node.js, Redis, and Docker, with real-time observability powered by Prometheus and Grafana.
 
 This system enforces multi-level rate limiting (global, IP, API key) using a token bucket algorithm implemented with Redis Lua scripting, ensuring atomic operations under high concurrency.
+<img width="1073" height="668" alt="Screenshot 2026-04-25 at 9 01 29 PM" src="https://github.com/user-attachments/assets/4a4f62ee-35cb-45ab-bd45-c7a389578226" />
+<img width="1073" height="668" alt="Screenshot 2026-04-25 at 9 02 40 PM" src="https://github.com/user-attachments/assets/db3cb8c0-4a2e-44bc-bc81-249df4679fa9" />
+<img width="1073" height="668" alt="Screenshot 2026-04-25 at 9 02 04 PM" src="https://github.com/user-attachments/assets/b953866f-0abf-418e-8bb9-b031de088aa0" />
 ## Key Features
 
 🔹 Distributed Rate Limiting
@@ -150,9 +153,7 @@ docker run --rm -i grafana/k6 run --vus 10 --duration 20s - < load-test.js
 - Correctly rejects excess traffic using HTTP 429
 - No system degradation under load
 
-<img width="1073" height="668" alt="Screenshot 2026-04-25 at 9 01 29 PM" src="https://github.com/user-attachments/assets/4a4f62ee-35cb-45ab-bd45-c7a389578226" />
-<img width="1073" height="668" alt="Screenshot 2026-04-25 at 9 02 40 PM" src="https://github.com/user-attachments/assets/db3cb8c0-4a2e-44bc-bc81-249df4679fa9" />
-<img width="1073" height="668" alt="Screenshot 2026-04-25 at 9 02 04 PM" src="https://github.com/user-attachments/assets/b953866f-0abf-418e-8bb9-b031de088aa0" />
+
 
 ## Contributing
 
